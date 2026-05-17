@@ -182,7 +182,7 @@ def run_job_hunt(prompt: str, dry_run: bool = False) -> str:
 
 
 def parse_company_domains(search_text: str, limit: int = 10) -> list[dict]:
-    """Parse company names and domains from search_web results."""
+    """Parse company names, domains, and snippets from search_web results."""
     companies = []
     current = {}
 
@@ -191,12 +191,14 @@ def parse_company_domains(search_text: str, limit: int = 10) -> list[dict]:
         if stripped.startswith("📄 "):
             if current.get("domain"):
                 companies.append(current)
-            current = {"company": stripped[2:].strip(), "source": ""}
+            current = {"company": stripped[2:].strip(), "source": "", "snippet": ""}
         elif stripped.startswith("Source:"):
             url = stripped.split("Source:", 1)[1].strip()
             parsed = urlparse(url)
             domain = parsed.netloc.replace("www.", "")
             current.update({"source": url, "domain": domain})
+        elif stripped and not current.get("snippet"):
+            current["snippet"] = stripped
         elif not stripped and current.get("domain") and len(companies) < limit:
             companies.append(current)
             current = {}
@@ -267,17 +269,17 @@ def parse_draft_response(draft_text: str) -> tuple[str, str]:
 
 
 def ensure_resume_attachment() -> list[str]:
-    """Compile resume and return attachment paths for outreach emails."""
+    """Compile resume and return PDF attachment paths for outreach emails."""
     attachments = []
     pdf_result = compile_resume_pdf(RESUME_PATH)
     if pdf_result and pdf_result.endswith(".pdf") and os.path.exists(pdf_result):
         attachments.append(pdf_result)
-    elif os.path.exists(RESUME_PATH):
-        attachments.append(RESUME_PATH)
+    else:
+        print("⚠️ Could not compile resume PDF. Emails will be sent without attachment.")
     return attachments
 
 
-def run_daily_job_hunt_auto(num_companies: int = 10, dry_run: bool = False):
+def run_daily_job_hunt_auto(num_companies: int = 10, dry_run: bool = False, ignore_history: bool = False, search_query: str = None):
     """Automatic daily pipeline: optimize resume, find contacts, send emails, and log results."""
     role = os.environ.get("YOUR_ROLE", "SDE / AI Engineer")
     print(f"\n{'='*70}")
@@ -294,7 +296,8 @@ def run_daily_job_hunt_auto(num_companies: int = 10, dry_run: bool = False):
     else:
         print("⚠️ No resume attachment available. Emails will be sent without attachment.")
 
-    search_query = f"Find startups and companies hiring {role} remote hybrid onsite in 2026, founder or CEO contact email"
+    if not search_query:
+        search_query = f"Find startups and companies hiring {role} remote hybrid onsite in 2026, founder or CEO contact email"
     print(f"\n2) Searching for companies with query:\n   {search_query}\n")
     search_results = search_web(search_query)
     print(search_results[:1200])
@@ -309,17 +312,21 @@ def run_daily_job_hunt_auto(num_companies: int = 10, dry_run: bool = False):
     for entry in companies:
         domain = entry.get("domain", "").strip().lower()
         company_lower = entry.get("company", "").strip().lower()
-        if domain and domain in existing["domains"]:
-            continue
-        if company_lower and company_lower in existing["companies"]:
-            continue
+        if not ignore_history:
+            if domain and domain in existing["domains"]:
+                continue
+            if company_lower and company_lower in existing["companies"]:
+                continue
         filtered_companies.append(entry)
         if len(filtered_companies) >= num_companies:
             break
 
     companies = filtered_companies
     if not companies:
-        print("✅ All found companies already contacted previously. No new targets to send.")
+        if ignore_history:
+            print("✅ No valid companies found for the current query.")
+        else:
+            print("✅ All found companies already contacted previously. No new targets to send.")
         return
 
     print(f"\n3) Found {len(companies)} target companies. Preparing outreach...\n")
@@ -494,11 +501,11 @@ def interactive_approve_drafts():
             print(f"📊 Updated: job_tracking.xlsx")
 
 
-def daily_job_hunt_interactive():
+def daily_job_hunt_interactive(ignore_history: bool = False, search_query: str = None):
     """
     One-command system: Run the full daily outreach pipeline automatically.
     """
-    run_daily_job_hunt_auto(num_companies=10, dry_run=False)
+    run_daily_job_hunt_auto(num_companies=10, dry_run=False, ignore_history=ignore_history, search_query=search_query)
 
 # ─── CLI Interface ───────────────────────────────────────────────────────────
 
@@ -508,8 +515,20 @@ if __name__ == "__main__":
         
         if command == "daily":
             # Run interactive one-command job hunt
-            daily_job_hunt_interactive()
+            if len(sys.argv) > 2:
+                search_query = " ".join(sys.argv[2:])
+                daily_job_hunt_interactive(search_query=search_query)
+            else:
+                daily_job_hunt_interactive()
         
+        elif command == "daily-force":
+            # Run the daily pipeline and ignore previous outreach history if needed
+            if len(sys.argv) > 2:
+                search_query = " ".join(sys.argv[2:])
+                daily_job_hunt_interactive(ignore_history=True, search_query=search_query)
+            else:
+                daily_job_hunt_interactive(ignore_history=True)
+
         elif command == "approve":
             # Interactively review and approve/reject drafts
             interactive_approve_drafts()
@@ -612,6 +631,9 @@ if __name__ == "__main__":
         
         python main.py approve
             → Review each draft interactively (approve/reject/skip)
+
+        python main.py daily-force
+            → Run the full daily pipeline and ignore previous tracking history
         
         python main.py approve-draft <draft_id>
             → Quick approve single draft

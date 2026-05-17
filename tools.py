@@ -16,7 +16,10 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email.mime.application import MIMEApplication
-from langchain_core.tools import tool
+# langchain `tool` decorator was used in earlier drafts. This file exposes
+# plain Python callables for direct use from `main.py`, so we don't import
+# or apply the `@tool` decorator here to avoid wrapped-tool calling issues.
+# from langchain_core.tools import tool
 
 try:
     from langchain_aws import ChatBedrock
@@ -200,8 +203,13 @@ To reject:  python main.py reject-draft {draft_id} "reason"
         for draft_id, draft in list(self.drafts.items()):
             if draft["status"] == "approved":
                 try:
-                    resume_file = Path(get_env("RESUME_PATH", "./resume.tex")).with_suffix(".pdf")
-                    attachments = [str(resume_file)] if resume_file.exists() else []
+                    resume_path = Path(get_env("RESUME_PATH", "./resume.tex"))
+                    resume_pdf = resume_path.with_suffix(".pdf")
+                    if not resume_pdf.exists():
+                        compile_result = compile_resume_pdf(str(resume_path))
+                        if isinstance(compile_result, str) and compile_result.endswith(".pdf"):
+                            resume_pdf = Path(compile_result)
+                    attachments = [str(resume_pdf)] if resume_pdf.exists() else []
 
                     # Send the email
                     result = send_email(draft["to_email"], draft["subject"], draft["body"], attachments=attachments)
@@ -361,7 +369,6 @@ def optimize_resume_latex() -> str:
         return f"❌ Resume optimization error: {str(e)}"
 
 
-@tool
 def draft_outreach_email(company: str, person: str, to_email: str, role: str, company_info: str = "", resume_summary: str = "") -> str:
     """Generate a concise, natural outreach email subject and body for job outreach."""
     try:
@@ -374,15 +381,16 @@ Company info/context: {company_info}
 Resume summary or highlights: {resume_summary}
 
 Requirements:
-- Natural tone, brief, and to the point.
-- Mention that the resume is attached.
+- Use the recipient's name or company name, not generic titles like "Manager" or "CEO".
+- Natural, engineer-to-engineer tone, not sales copy.
+- Mention that your resume is attached.
 - Ask about opportunities for SDE / AI Engineer work.
 - Reference remote, hybrid, or onsite availability.
-- Include a short call-to-action for a quick conversation.
+- Include a short call to action for a quick conversation.
 - Keep it under 120 words.
 - Use one or two relevant AI/SDE keywords.
-- Include an unsubscribe line: "To unsubscribe, reply with STOP."
-- Do not be overly salesy.
+- Add a simple opt-out line: "Reply with unsubscribe to opt out."
+- Avoid generic greetings like "I hope this finds you well" and avoid the phrase "stop to unsubscribe."
 
 Return output as:
 SUBJECT: <subject line>
@@ -393,9 +401,17 @@ BODY:
         response = llm(prompt)
         return str(response).strip()
     except Exception as e:
-        return f"❌ Email generation failed: {str(e)}"
-
-def get_followup_candidates() -> list:
+        # Fallback to a simple templated email if the LLM provider is unavailable.
+        fallback_subject = f"Interest in {role} / AI Engineering opportunity"
+        fallback_body = (
+            f"Hi {person},\n\n"
+            f"I’m {get_env('YOUR_NAME', 'a candidate')}, a {role} focused on practical AI engineering. "
+            f"I’m reaching out because I found {company} while researching companies building strong AI products, and I believe I can add value to your team. "
+            f"My resume is attached and I’m available for remote, hybrid, or onsite roles.\n\n"
+            f"If you’d rather not receive future messages, reply with unsubscribe.\n\n"
+            f"Best regards,\n{get_env('YOUR_NAME', 'Candidate')}"
+        )
+        return f"SUBJECT: {fallback_subject}\n\nBODY:\n{fallback_body}"
     """
     Get list of people to follow up with (no reply after 7 days).
     Returns: [(company, person, email, days_since), ...]
@@ -435,7 +451,6 @@ def get_followup_candidates() -> list:
         return candidates
 
 
-@tool
 def find_founder_email(company_domain: str) -> dict:
     """
     Find founder/CEO email by searching common patterns and Hunter API.
@@ -519,7 +534,6 @@ def get_env(key: str, default: str = "") -> str:
 # ─── EXISTING TOOLS (1-5) ────────────────────────────────────────────────────
 # These are proven to work from your current setup
 
-@tool
 def search_web(query: str) -> str:
     """
     Search the web for job opportunities, companies, and research.
@@ -582,7 +596,6 @@ def search_web(query: str) -> str:
         return f"❌ Search error: {str(e)[:200]}"
 
 
-@tool
 def find_email(full_name: str, company_domain: str) -> str:
     """
     Find a professional's email address.
@@ -649,7 +662,6 @@ def find_email(full_name: str, company_domain: str) -> str:
         return f"❌ Error: {str(e)}"
 
 
-@tool
 def send_email(to_email: str, subject: str, body: str, attachments: list = None) -> str:
     """
     Send a job inquiry email via Gmail.
@@ -669,11 +681,12 @@ def send_email(to_email: str, subject: str, body: str, attachments: list = None)
         if not validate_email(to_email):
             return f"❌ Invalid email format: {to_email}. Skipped to protect reputation."
         
-        # Warn if using personal email (deliverability issue)
-        if is_common_domain(to_email):
+        # Warn if using personal email (deliverability issue).
+        # Allow this if sending a test email to the same Gmail account.
+        gmail = get_env("GMAIL_ADDRESS")
+        if is_common_domain(to_email) and gmail and to_email.lower() != gmail.lower():
             return f"⚠️ {to_email} is a personal email (Gmail/Yahoo/Outlook). Consider finding company email instead."
         
-        gmail = get_env("GMAIL_ADDRESS")
         password = get_env("GMAIL_APP_PASSWORD")
         
         if not gmail or not password:
@@ -722,7 +735,6 @@ def send_email(to_email: str, subject: str, body: str, attachments: list = None)
         return f"❌ Send failed: {str(e)[:150]}"
 
 
-@tool
 def draft_email_for_review(company: str, person: str, to_email: str, subject: str, body: str, context: str = "") -> str:
     """
     DRAFT an email for human review instead of sending immediately.
@@ -756,7 +768,6 @@ def draft_email_for_review(company: str, person: str, to_email: str, subject: st
         return f"❌ Draft failed: {str(e)}"
 
 
-@tool
 def review_drafts() -> str:
     """
     Show all pending email drafts waiting for human approval.
@@ -788,7 +799,6 @@ def review_drafts() -> str:
     return result
 
 
-@tool
 def approve_draft(draft_id: str) -> str:
     """
     Approve a pending email draft for sending.
@@ -805,7 +815,6 @@ def approve_draft(draft_id: str) -> str:
         return f"❌ Draft {draft_id} not found."
 
 
-@tool
 def reject_draft(draft_id: str, reason: str = "") -> str:
     """
     Reject a pending email draft.
@@ -822,7 +831,6 @@ def reject_draft(draft_id: str, reason: str = "") -> str:
         return f"❌ Draft {draft_id} not found."
 
 
-@tool
 def send_approved_drafts() -> str:
     """
     Send all approved email drafts.
@@ -835,7 +843,6 @@ def send_approved_drafts() -> str:
     return f"✅ Sent {sent_count} approved email drafts."
 
 
-@tool
 def log_outreach(to_email: str, subject: str, body_preview: str, status: str = "sent") -> str:
     """
     Log all outreach in JSON file for tracking.
@@ -868,7 +875,6 @@ def log_outreach(to_email: str, subject: str, body_preview: str, status: str = "
         return f"❌ Log error: {str(e)}"
 
 
-@tool
 def get_outreach_log() -> str:
     """
     View all past outreach (last 20 entries).
@@ -898,7 +904,6 @@ def get_outreach_log() -> str:
         return f"❌ Error reading log: {str(e)}"
 
 
-@tool
 def get_followup_needed() -> str:
     """
     OPTIMIZATION 4: Get list of people to follow up with.
@@ -934,51 +939,11 @@ Example follow-up subject: "Following up - [Your Role] @ [Company]"
 
 # ─── NEW TOOLS (6-9) — Resume, Excel Tracking, Daily Reports ──────────────────
 
-@tool
-def optimize_resume_latex() -> str:
-    """
-    Optimize your LaTeX resume with latest achievements and skills.
-    
-    This tool reads ./resume.tex, rewrites resume sections conservatively,
-    and preserves the design and layout of the document.
-    """
-    resume_path = Path(get_env("RESUME_PATH", "./resume.tex"))
-    
-    try:
-        if not resume_path.exists():
-            return f"❌ Resume not found at {resume_path}. Create resume.tex first."
-        
-        content = resume_path.read_text(encoding="utf-8")
-        section_pattern = re.compile(
-            r"(?P<header>\\section\{[^}]+\})(?P<body>.*?)(?=(\\section\{|\\end\{document\}|$))",
-            re.DOTALL,
-        )
-        updated = content
-        updated_sections = []
-        role = get_env("YOUR_ROLE", "Software Engineer")
-
-        for match in section_pattern.finditer(content):
-            header = match.group("header")
-            body = match.group("body")
-            section_name = header.replace("\\section{", "").replace("}", "").strip().upper()
-
-            if section_name in ["SUMMARY", "EXPERIENCE", "PROJECTS", "SKILLS", "EDUCATION"]:
-                rewritten = _rewrite_resume_section(section_name, body, role)
-                if rewritten and rewritten.strip() != body.strip():
-                    updated = updated.replace(body, rewritten, 1)
-                    updated_sections.append(section_name)
-
-        if updated_sections and updated != content:
-            resume_path.write_text(updated, encoding="utf-8")
-            sections = ", ".join(updated_sections)
-            return f"✅ Resume optimized: updated sections: {sections}"
-
-        return "✅ Resume checked. No structural changes were needed."
-    except Exception as e:
-        return f"❌ Resume optimization error: {str(e)}"
+# `optimize_resume_latex` is implemented earlier in this file as a plain function
+# (see the implementation above). Avoid defining a duplicate @tool-wrapped
+# version to keep direct calls from `main.py` working.
 
 
-@tool
 def get_excel_tracking() -> str:
     """
     View your Excel tracking sheet with all job outreach.
@@ -1031,7 +996,6 @@ def get_excel_tracking() -> str:
         return f"❌ Error reading tracking: {str(e)}"
 
 
-@tool
 def update_excel_tracking(company: str, person: str, email: str, role: str, subject: str, body: str, notes: str = "") -> str:
     """
     Add an outreach entry to your Excel tracking sheet.
@@ -1108,7 +1072,6 @@ def update_excel_tracking(company: str, person: str, email: str, role: str, subj
         return f"❌ Tracking error: {str(e)}"
 
 
-@tool
 def send_daily_report() -> str:
     """
     Send yourself a daily report with:
@@ -1140,7 +1103,7 @@ def send_daily_report() -> str:
         
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[0]:  # If company exists
-                date_str = str(row[3]) if row[3] else ""
+                date_str = str(row[6]) if len(row) > 6 and row[6] else ""
                 if today in date_str:
                     today_entries.append(row)
         
