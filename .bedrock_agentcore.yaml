@@ -1,0 +1,36 @@
+specVersion: "1.0"
+
+project:
+  name: founder-outreach-agent
+  description: AI agent for autonomous startup founder outreach and cold email campaigns
+
+agents:
+  founder-outreach-agent:
+    name: founder-outreach-agent
+    entrypoint: main.py
+    aws:
+      region: eu-north-1
+      account: "478840952047"
+      execution_role: "arn:aws:iam::478840952047:role/bedrock-agentcore-execution-role"
+      ecr_repo_name: null
+    # Environment variables for your agent runtime
+    # These will be available to main.py via os.environ
+    environment_variables:
+      TAVILY_API_KEY: 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
+      HUNTER_API_KEY: b0f1a177b37468d90614113ed8ef000d825ba417
+      GMAIL_ADDRESS: kirtanrajesh@gmail.com
+      GMAIL_APP_PASSWORD: "mnyg szgl bvsq wrue"
+      YOUR_NAME: Kirtan Rajesh
+      YOUR_ROLE: GenAI Software Developer
+      YOUR_LINKEDIN: https://www.linkedin.com/in/kirtanrajesh/
+      YOUR_GITHUB: https://github.com/Kirtan-Rajesh
+      AWS_REGION: eu-north-1
+      BEDROCK_MODEL: eu.anthropic.claude-haiku-4-5-20251001-v1:0
+
+    # Agent memory (disabled as per our setup)
+    memory:
+      type: none
+
+    # Logging configuration
+    logging:
+      level: INFO

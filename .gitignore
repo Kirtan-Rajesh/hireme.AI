@@ -1,0 +1,29 @@
+# Local environment and secrets
+.env
+.env.*
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+
+# Editor and OS files
+.vscode/
+.DS_Store
+
+# Build / distribution
+dist/
+build/
+*.egg-info/
+
+# Project data and caches
+.api_cache.json
+outreach_log.json
+email_drafts.json
+job_tracking.xlsx
+
+# Logs
+*.log

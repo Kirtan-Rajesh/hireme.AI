@@ -1,0 +1,183 @@
+%-------------------------
+% Resume Tailored for Goldman Sachs -- Systems Engineering Analyst
+%------------------------
+
+\documentclass[letterpaper,10.5pt]{article}
+
+\usepackage{latexsym}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{marvosym}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{verbatim}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\usepackage{tabularx}
+\input{glyphtounicode}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\addtolength{\oddsidemargin}{-0.6in}
+\addtolength{\evensidemargin}{-0.5in}
+\addtolength{\textwidth}{1.19in}
+\addtolength{\topmargin}{-.75in}
+\addtolength{\textheight}{1.6in}
+
+\urlstyle{same}
+\raggedbottom
+\raggedright
+\setlength{\tabcolsep}{0in}
+
+\titleformat{\section}{
+  \vspace{-4pt}\scshape\raggedright\large\bfseries
+}{}{0em}{}[\color{black}\titlerule \vspace{-5pt}]
+
+\pdfgentounicode=1
+
+\newcommand{\resumeItem}[1]{
+  \item\small{{#1 \vspace{-2pt}}}
+}
+
+\newcommand{\resumeSubheading}[4]{
+  \vspace{-2pt}\item
+    \begin{tabular*}{1.0\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & \textbf{\small #2} \\
+      \textit{\small#3} & \textit{\small #4} \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeProjectHeading}[2]{
+    \item
+    \begin{tabular*}{1.001\textwidth}{l@{\extracolsep{\fill}}r}
+      \small#1 & \textbf{\small #2}\\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\renewcommand\labelitemi{$\vcenter{\hbox{\tiny$\bullet$}}$}
+\renewcommand\labelitemii{$\vcenter{\hbox{\tiny$\bullet$}}$}
+
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.0in, label={}]}
+\newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
+\newcommand{\resumeItemListStart}{\begin{itemize}[leftmargin=0.15in]}
+\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-5pt}}
+
+%-------------------------------------------
+\begin{document}
+
+%----------HEADING----------
+\begin{center}
+    {\Huge \scshape Kirtan Rajesh} \\ \vspace{6pt}
+    \small +91-9422102188 ~
+    \href{mailto:kirtanrajeshworks@gmail.com}{\underline{kirtanrajeshworks@gmail.com}} ~
+    \href{https://linkedin.com/in/kirtanrajesh/}{\underline{LinkedIn}} ~
+    \href{https://github.com/Kirtan-Rajesh}{\underline{GitHub}} ~
+    \href{https://kirtanrajesh.vercel.app/}{\underline{Portfolio}}
+    \vspace{-8pt}
+\end{center}
+
+%-----------EDUCATION-----------
+\section{Education}
+  \resumeSubHeadingListStart
+    \resumeSubheading
+      {Vellore Institute of Technology, Chennai}{2021 -- 2025}
+      {B.Tech. Computer Science and Engineering (Specialization: AI \& Robotics)}{CGPA: 8.72/10.0}
+      \resumeItemListStart
+        \resumeItem{\textbf{Relevant Coursework:} Data Structures \& Algorithms, OOP, DBMS, Operating Systems, Computer Networks, Distributed Systems, Software Engineering}
+       
+      \resumeItemListEnd
+  \resumeSubHeadingListEnd
+\vspace{-14pt}
+
+%-----------EXPERIENCE-----------
+\section{Work Experience}
+  \resumeSubHeadingListStart
+
+    \resumeSubheading
+      {Cybage Software}{February 2026 -- Present}
+      {Software Developer - Generative AI}{Pune, India}
+      \resumeItemListStart
+        \resumeItem{Designed and deployed \textbf{high-throughput, low-latency FastAPI} microservices with async I/O and connection pooling; sustained \textbf{500+ RPS} at \textbf{P99 latency under 120ms} across horizontally scaled distributed deployments with zero-downtime rollouts via \textbf{Docker + GitHub Actions CI/CD}}
+        \resumeItem{Engineered distributed \textbf{PostgreSQL} data layer with composite indexing, query plan optimisation, and schema migrations; layered \textbf{Redis} caching and pub/sub for real-time inter-service messaging, reducing average read latency by \textbf{38\%} under high-concurrency workloads}
+        \resumeItem{Built stateful multi-agent orchestration engine (\textbf{LangGraph}) with retry logic, circuit-breaking, and dead-letter handling; integrated end-to-end distributed tracing via \textbf{Langfuse} for full execution observability across service boundaries}
+        \resumeItem{Implemented automated test and regression infrastructure with \textbf{pytest} and \textbf{RAGAS}-based benchmarking; enforced quality gates in CI pipeline, reducing post-deploy incident rate and ensuring reproducibility across distributed agent workflows}
+      \resumeItemListEnd
+
+    \resumeSubheading
+      {Hucenrotia Lab, National Yang Ming Chiao Tung University}{August 2025 -- October 2025}
+      {Research Intern -- Robotics \& AI}{NYCU, Hsinchu, Taiwan}
+      \resumeItemListStart
+        \resumeItem{Implemented \textbf{Extended Kalman Filter} in \textbf{C++} for real-time multi-sensor fusion (camera + position) at high frequency; engineered PID-controlled trajectory planner and analytical inverse kinematics solver with hard real-time constraints, achieving \textbf{77.8\%} interception accuracy and \textbf{40\%} reduction in motion planning latency}
+        \resumeItem{Designed low-latency \textbf{C++/Python} robot control pipeline; exposed control APIs over \textbf{FastAPI + WebSocket (ROSBridge)} for concurrent real-time command streaming, validated under parallel client load in a distributed lab environment}
+      \resumeItemListEnd
+
+    \resumeSubheading
+      {Caliber Interconnect}{June 2024 -- July 2024}
+      {Software Developer Intern}{Bengaluru, Karnataka}
+      \resumeItemListStart
+        \resumeItem{Built real-time robot control dashboard using \textbf{React} and \textbf{WebSocket (ROSBridge)}; refactored component architecture and optimised React hooks-based state management, reducing dashboard load time by \textbf{35\%} and eliminating race conditions under concurrent update streams}
+      \resumeItemListEnd
+
+  \resumeSubHeadingListEnd
+\vspace{-12pt}
+
+%-----------PUBLICATIONS-----------
+\section{Publications \& Research}
+\resumeSubHeadingListStart
+\vspace{-1pt}
+  \resumeItem{\textbf{[First Author]} \href{https://ieeexplore.ieee.org/document/11127041}{Deep Reinforcement Learning for Urban Air Quality Management} -- \textbf{IEEE Access 2025} (IF: 3.9). PPO-based RL on 1M+ data points; achieved 26\% AQI improvement through data-driven policy optimisation.}
+  \vspace{-5pt}
+  \resumeItem{\textbf{[First Author]} \href{https://drive.google.com/file/d/1O1FgRTEs38amUXi4dztNdlaET77SkNqO/view}{MSHAN: Multi-Scale Hybrid Attention Network for ECG Arrhythmia Detection} -- \textbf{IEEE ICCCNT 2025}. CNN + attention hybrid architecture with SHAP-based clinical interpretability.}
+  \vspace{-5pt}
+  \resumeItem{\textbf{[Co-Author]} \href{https://www.sciencedirect.com/science/article/pii/S2590123025036862}{Resilient Solar Microgrid Management via Multi-Agent RL} -- \textbf{Results in Engineering, Elsevier 2025}. DQN-based multi-agent system for real-time energy management and fault resilience.}
+\resumeSubHeadingListEnd
+\vspace{-15pt}
+
+%-----------TECHNICAL SKILLS-----------
+\section{Technical Skills}
+\begin{itemize}[leftmargin=0.15in, label={}]
+  \small{\item{
+    \textbf{Languages:} C++, Python, Java, C, SQL \\
+    \textbf{Systems \& Infrastructure:} Distributed Systems, Microservices, Concurrency, Linux/Unix, Docker, GitHub Actions (CI/CD), Jenkins \\
+    \textbf{Backend \& APIs:} FastAPI, Flask, Django, REST API Design, OpenAPI/Swagger, WebSockets \\
+    \textbf{Databases:} PostgreSQL, MySQL, Redis (caching \& pub/sub), MongoDB, NoSQL Databases \\
+    \textbf{Testing \& Observability:} pytest, Postman/Newman, RAGAS, DeepEval, Langfuse, LangSmith \\
+    \textbf{GenAI \& ML:} LangChain, LangGraph, OpenAI API, Amazon Bedrock, FAISS, RAG, CrewAI, TensorFlow, Scikit-learn
+  }}
+\end{itemize}
+\vspace{-16pt}
+
+%-----------PROJECTS-----------
+\section{Software Development Projects}
+\vspace{-6pt}
+\resumeSubHeadingListStart
+
+  \resumeProjectHeading
+    {\textbf{Nexus AI -- Distributed Multi-Agent Orchestration Platform} $|$ \emph{FastAPI, LangGraph, FAISS, Redis, Langfuse}}{}
+    \resumeItemListStart
+      \resumeItem{Production-grade distributed system with async \textbf{FastAPI} orchestration layer; \textbf{LangGraph} stateful workflow engine with retry and circuit-breaking policies; \textbf{Redis} pub/sub for real-time inter-agent messaging; FAISS-backed hybrid RAG with query rewriting; end-to-end distributed tracing and RAGAS regression suites across service boundaries}
+    \resumeItemListEnd
+\vspace{-15pt}
+
+  \resumeProjectHeading
+    {\textbf{\href{https://bjp-bengal-pop.vercel.app/}{Pulse of People -- Real-Time Sentiment Analytics Platform}} $|$ \emph{FastAPI, React, PostgreSQL, Redis, Docker}}{}
+    \resumeItemListStart
+      \resumeItem{Distributed analytics backend ingesting \textbf{50K+ records}; async \textbf{FastAPI} microservice with containerised deployment via \textbf{Docker}; PostgreSQL composite indexing and server-side \textbf{Redis} caching achieving \textbf{40\% reduction} in API response times under sustained concurrent load}
+    \resumeItemListEnd
+\vspace{-15pt}
+
+  \resumeProjectHeading
+    {\textbf{\href{https://github.com/Kirtan-Rajesh/ScanittAI}{ScanittAI -- Intelligent Document Processing System}} $|$ \emph{FastAPI, React, OpenCV, Tesseract, Groq AI}}{}
+    \resumeItemListStart
+      \resumeItem{Async \textbf{FastAPI} REST backend with concurrent document processing pipeline; OpenCV preprocessing + Tesseract OCR; relational schema with full-text search indexing; AI-powered document Q\&A via Groq LLM — designed for high-throughput multi-user ingestion}
+    \resumeItemListEnd
+
+\resumeSubHeadingListEnd
+\vspace{-14pt}
+
+\end{document}
