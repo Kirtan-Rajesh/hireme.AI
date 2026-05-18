@@ -32,7 +32,13 @@ from tools import (
     compile_resume_pdf,
     get_excel_tracking,
     update_excel_tracking,
-    send_daily_report
+    send_daily_report,
+    is_job_board_url,
+    is_generic_company_name,
+    extract_company_name_from_title,
+    infer_companies_from_search_results,
+    suggest_companies_by_role,
+    find_company_website
 )
 
 # ─── Configuration ───────────────────────────────────────────────────────────
@@ -188,35 +194,69 @@ def parse_company_domains(search_text: str, limit: int = 10) -> list[dict]:
 
     for line in search_text.splitlines():
         stripped = line.strip()
-        if stripped.startswith("📄 "):
-            if current.get("domain"):
-                companies.append(current)
-            current = {"company": stripped[2:].strip(), "source": "", "snippet": ""}
-        elif stripped.startswith("Source:"):
+        if not stripped:
+            continue
+        if "📄" in stripped:
+            stripped = stripped.split("📄", 1)[1].strip()
+        if stripped.startswith("Source:"):
             url = stripped.split("Source:", 1)[1].strip()
             parsed = urlparse(url)
-            domain = parsed.netloc.replace("www.", "")
+            domain = parsed.netloc.replace("www.", "").lower()
             current.update({"source": url, "domain": domain})
-        elif stripped and not current.get("snippet"):
-            current["snippet"] = stripped
-        elif not stripped and current.get("domain") and len(companies) < limit:
-            companies.append(current)
+        elif stripped.startswith("---"):
+            if current.get("domain"):
+                companies.append(current)
             current = {}
+        elif stripped and not stripped.startswith("Source:") and not stripped.startswith("---") and not current.get("company"):
+            current["company"] = stripped
+        elif stripped and not current.get("snippet") and not stripped.startswith("Source:"):
+            if not current.get("snippet"):
+                current["snippet"] = stripped
 
-    if current.get("domain") or current.get("company"):
+    if current.get("domain"):
         companies.append(current)
 
-    unique = []
+    validated = []
     seen = set()
     for entry in companies:
-        key = entry.get("domain", "").strip().lower() or entry.get("company", "").strip().lower()
-        if key and key not in seen:
-            seen.add(key)
-            unique.append(entry)
-            if len(unique) >= limit:
-                break
+        title = entry.get("company", "").strip()
+        source = entry.get("source", "")
+        domain = entry.get("domain", "").strip().lower()
+        if not domain or not title:
+            continue
 
-    return unique
+        if is_job_board_url(source):
+            company_name = extract_company_name_from_title(title, domain)
+            if company_name and not is_generic_company_name(company_name):
+                company_domain = find_company_website(company_name)
+                if company_domain:
+                    title = company_name
+                    domain = company_domain
+                    entry["company"] = company_name
+                    entry["domain"] = company_domain
+                else:
+                    continue
+            else:
+                continue
+
+        if is_generic_company_name(title):
+            continue
+
+        company_name = extract_company_name_from_title(title, domain)
+        if not company_name or is_generic_company_name(company_name):
+            continue
+
+        key = domain or company_name.lower()
+        if key in seen:
+            continue
+
+        seen.add(key)
+        entry["company"] = company_name
+        validated.append(entry)
+        if len(validated) >= limit:
+            break
+
+    return validated
 
 
 def load_existing_outreach() -> dict:
@@ -297,37 +337,69 @@ def run_daily_job_hunt_auto(num_companies: int = 10, dry_run: bool = False, igno
         print("⚠️ No resume attachment available. Emails will be sent without attachment.")
 
     if not search_query:
-        search_query = f"Find startups and companies hiring {role} remote hybrid onsite in 2026, founder or CEO contact email"
+        search_query = (
+            f"Find early-stage companies hiring {role} remote hybrid onsite in 2026. "
+            "Prefer company career pages, press announcements, and executive profiles. "
+            "Exclude aggregator or list pages such as Built In, Indeed, ZipRecruiter, and generic top lists."
+        )
     print(f"\n2) Searching for companies with query:\n   {search_query}\n")
     search_results = search_web(search_query)
     print(search_results[:1200])
 
-    companies = parse_company_domains(search_results, limit=num_companies * 2)
-    if not companies:
-        print("❌ Could not identify companies from search results.")
-        return
-
     existing = load_existing_outreach()
-    filtered_companies = []
-    for entry in companies:
-        domain = entry.get("domain", "").strip().lower()
-        company_lower = entry.get("company", "").strip().lower()
-        if not ignore_history:
-            if domain and domain in existing["domains"]:
-                continue
-            if company_lower and company_lower in existing["companies"]:
-                continue
-        filtered_companies.append(entry)
-        if len(filtered_companies) >= num_companies:
-            break
+    companies = parse_company_domains(search_results, limit=num_companies * 2)
 
-    companies = filtered_companies
-    if not companies:
+    def filter_companies(entries: list[dict]) -> list[dict]:
+        filtered = []
+        for entry in entries:
+            domain = entry.get("domain", "").strip().lower()
+            company_lower = entry.get("company", "").strip().lower()
+            if not ignore_history:
+                if domain and domain in existing["domains"]:
+                    continue
+                if company_lower and company_lower in existing["companies"]:
+                    continue
+            filtered.append(entry)
+            if len(filtered) >= num_companies:
+                break
+        return filtered
+
+    filtered_companies = filter_companies(companies)
+
+    if not filtered_companies and not ignore_history:
+        print("⚠️ All found companies were already contacted or invalid. Asking the LLM to find new targets excluding known companies...")
+        companies = infer_companies_from_search_results(
+            search_results,
+            role,
+            exclude_companies=list(existing["companies"]),
+            max_results=num_companies * 2,
+        )
+        if companies:
+            print(f"✅ AI refinement found {len(companies)} candidate companies.")
+            filtered_companies = filter_companies(companies)
+
+    if not filtered_companies and not ignore_history:
+        print("⚠️ The initial search and AI refinement did not produce new targets. Generating fresh startup targets for the role...")
+        companies = suggest_companies_by_role(
+            role,
+            exclude_companies=list(existing["companies"]),
+            max_results=num_companies * 2,
+        )
+        if companies:
+            print(f"✅ LLM suggestion found {len(companies)} candidate companies.")
+            filtered_companies = filter_companies(companies)
+        if not filtered_companies:
+            print("✅ All found companies already contacted previously or no new valid targets were identified.")
+            return
+
+    if not filtered_companies:
         if ignore_history:
             print("✅ No valid companies found for the current query.")
         else:
             print("✅ All found companies already contacted previously. No new targets to send.")
         return
+
+    companies = filtered_companies
 
     print(f"\n3) Found {len(companies)} target companies. Preparing outreach...\n")
 
@@ -359,8 +431,16 @@ def run_daily_job_hunt_auto(num_companies: int = 10, dry_run: bool = False, igno
             title = "Company contact"
             confidence = "fallback"
 
-        if not email or not email.strip():
+        if email:
+            print(f"Email found: {email} (format valid: {validate_email(email)})")
+        else:
             print(f"⚠️ Skipping {company}: no contact email found.")
+
+        if not email or not email.strip():
+            continue
+
+        if not validate_email(email):
+            print(f"⚠️ Skipping {company}: invalid email format {email}.")
             continue
 
         if email.lower() in existing["emails"]:

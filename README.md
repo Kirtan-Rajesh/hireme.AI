@@ -49,6 +49,10 @@ Required variables:
 - `AWS_REGION`
 - `BEDROCK_MODEL`
 
+Optional but recommended:
+
+- `SERPAPI_API_KEY` (for higher-quality company search results)
+
 4. Edit `resume.tex` with your real experience.
 
 5. (Optional) Install a LaTeX distribution with `pdflatex` if you want PDF resume attachment.

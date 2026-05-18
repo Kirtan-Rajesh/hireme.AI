@@ -90,6 +90,269 @@ class APICache:
 api_cache = APICache()
 
 
+def is_job_board_url(url: str) -> bool:
+    """Detect whether a URL belongs to a job board, aggregator, or list page."""
+    if not url:
+        return False
+    parsed = urlparse(url)
+    domain = parsed.netloc.lower().replace("www.", "")
+    job_board_sites = [
+        "builtin.com",
+        "ziprecruiter.com",
+        "indeed.com",
+        "workinvirtual.com",
+        "topstartups.io",
+        "f6s.com",
+        "angel.co",
+        "wellfound.com",
+        "linkedin.com",
+        "glassdoor.com",
+        "monster.com",
+        "lever.co",
+        "greenhouse.io",
+        "remote.co",
+        "remoteok.io",
+        "weworkremotely.com",
+    ]
+    if domain.endswith(".jobs"):
+        return True
+    return any(domain.endswith(site) for site in job_board_sites)
+
+
+def is_generic_company_name(name: str) -> bool:
+    """Return True when a result title looks like a generic aggregator/list page."""
+    if not name:
+        return True
+    text = name.lower().strip()
+    generic_phrases = [
+        "top ",
+        "companies hiring",
+        "jobs",
+        "remote",
+        "hiring",
+        "startup jobs",
+        "companies",
+        "list",
+        "job board",
+        "now hiring",
+        "roles",
+    ]
+    return any(phrase in text for phrase in generic_phrases) and not any(
+        word in text for word in ["inc", "llc", "ltd", "corp", "company", "agency"]
+    )
+
+
+def extract_company_name_from_title(title: str, domain: str) -> str:
+    """Try to infer a real company name from a search result title."""
+    if not title:
+        return ""
+    title = title.strip()
+    candidates = []
+    
+    # Common patterns: "Software Engineer at Company", "Company | Jobs", "Company - Remote".
+    patterns = [
+        (r"at ([A-Za-z0-9 &.,'\-()]+?)(?:\s*-|$)", "at_pattern"),
+        (r"@\s*([A-Za-z0-9 &.,'\-()]+)", "at_symbol"),
+        (r"^([A-Za-z0-9 &.,'\-()]+?)\s*\|", "pipe_pattern"),
+        (r"\|\s*([A-Za-z0-9 &.,'\-()]+)$", "pipe_end"),
+    ]
+    for pattern, name in patterns:
+        match = re.search(pattern, title)
+        if match:
+            candidate = match.group(1).strip()
+            if candidate and not is_generic_company_name(candidate):
+                candidates.append((candidate, name))
+    
+    if candidates:
+        return candidates[0][0]
+    
+    # Fallback to domain base if the title is not actionable
+    if domain:
+        base = domain.split(".")[0].replace("-", " ").title()
+        if not is_generic_company_name(base):
+            return base
+    return ""
+
+
+def infer_companies_from_search_results(search_text: str, role: str, exclude_companies: list[str] = None, max_results: int = 10) -> list[dict]:
+    """Use the LLM to infer real company targets from generic or noisy search results."""
+    if ChatBedrock is None:
+        return []
+
+    exclude_companies = exclude_companies or []
+    exclude_list = ", ".join(sorted(set(exclude_companies))) if exclude_companies else "none"
+
+    try:
+        llm = get_bedrock_llm()
+        prompt = f"""
+You are a research assistant identifying real startup companies that are hiring for the role {role}.
+
+Given these web search results, ignore generic aggregator pages, list posts, and site directories. Extract up to {max_results} real companies with their domain and source URL. If a result is an overview/list page, skip it.
+
+Do not return any of these already-contacted companies: {exclude_list}.
+
+Return one line per company in this exact format:
+company | domain | source | snippet
+
+Search results:
+{search_text}
+"""
+        response = llm(prompt)
+        output = str(response).strip()
+
+        companies = []
+        for line in output.splitlines():
+            cleaned = line.strip()
+            if not cleaned:
+                continue
+            cleaned = re.sub(r"^\s*\d+\.?\s*", "", cleaned)
+            parts = [p.strip() for p in cleaned.split("|") if p.strip()]
+            if len(parts) < 3:
+                if "—" in cleaned:
+                    parts = [p.strip() for p in cleaned.split("—") if p.strip()]
+                elif "-" in cleaned:
+                    parts = [p.strip() for p in cleaned.split("-") if p.strip()]
+            if len(parts) < 3:
+                continue
+            company = parts[0]
+            domain = parts[1].replace("www.", "").lower()
+            source = parts[2]
+            snippet = parts[3] if len(parts) > 3 else ""
+            if not company or not domain or is_job_board_url(source) or is_generic_company_name(company):
+                continue
+            if company.lower() in [c.lower() for c in exclude_companies]:
+                continue
+            companies.append({
+                "company": company,
+                "domain": domain,
+                "source": source,
+                "snippet": snippet,
+            })
+            if len(companies) >= max_results:
+                break
+
+        return companies
+    except Exception:
+        return []
+
+
+def find_company_website(company_name: str) -> str:
+    """Search the web for a company website/domain by the company name."""
+    if not company_name:
+        return ""
+    cache_key = f"company_domain:{company_name.lower()}"
+    cached = api_cache.get(cache_key, ttl_hours=168)
+    if cached:
+        return cached
+
+    search_text = search_web(f"{company_name} official website")
+    company_domain = ""
+
+    for line in search_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Source:"):
+            url = stripped.split("Source:", 1)[1].strip()
+            parsed = urlparse(url)
+            domain = parsed.netloc.replace("www.", "").lower()
+            if domain and not is_job_board_url(url):
+                company_domain = domain
+                break
+
+    if company_domain:
+        api_cache.set(cache_key, company_domain)
+    return company_domain
+
+
+def suggest_companies_by_role(role: str, exclude_companies: list[str] = None, max_results: int = 10) -> list[dict]:
+    """Use the LLM to suggest active early-stage companies hiring for the target role."""
+    if ChatBedrock is None:
+        return []
+
+    exclude_companies = exclude_companies or []
+    exclude_list = ", ".join(sorted(set(exclude_companies))) if exclude_companies else "none"
+
+    try:
+        llm = get_bedrock_llm()
+        prompt = f"""
+You are an expert research assistant. List up to {max_results} early-stage startup companies that are actively hiring for the role {role}.
+
+Exclude these companies entirely: {exclude_list}.
+
+Return one line per company in this exact format:
+company | domain | why this is a strong target
+
+Only include real companies or startups, not aggregators, job boards, or list pages.
+"""
+        response = llm(prompt)
+        output = str(response).strip()
+
+        companies = []
+        for line in output.splitlines():
+            cleaned = line.strip()
+            if not cleaned:
+                continue
+            cleaned = re.sub(r"^\s*\d+\.?\s*", "", cleaned)
+            parts = [p.strip() for p in cleaned.split("|") if p.strip()]
+            if len(parts) < 2:
+                if "—" in cleaned:
+                    parts = [p.strip() for p in cleaned.split("—") if p.strip()]
+                elif "-" in cleaned:
+                    parts = [p.strip() for p in cleaned.split("-") if p.strip()]
+            if len(parts) < 2:
+                continue
+            company = parts[0]
+            domain = parts[1].replace("www.", "").lower()
+            note = parts[2] if len(parts) > 2 else ""
+            if not company or is_generic_company_name(company):
+                continue
+            if company.lower() in [c.lower() for c in exclude_companies]:
+                continue
+            if not domain or is_job_board_url(domain):
+                domain = find_company_website(company)
+            if not domain:
+                continue
+            companies.append({
+                "company": company,
+                "domain": domain,
+                "source": "LLM suggestion",
+                "snippet": note,
+            })
+            if len(companies) >= max_results:
+                break
+
+        return companies
+    except Exception:
+        return []
+
+
+def serpapi_search(query: str) -> str:
+    """Use SerpAPI if available for higher-quality search results."""
+    api_key = get_env("SERPAPI_API_KEY")
+    if not api_key:
+        return ""
+    try:
+        url = "https://serpapi.com/search.json"
+        params = {
+            "q": query,
+            "api_key": api_key,
+            "engine": "google",
+            "num": 8,
+        }
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        results = []
+        for item in data.get("organic_results", []):
+            title = item.get("title", "").strip()
+            link = item.get("link", "").strip()
+            snippet = item.get("snippet", "").strip()
+            if title and link:
+                results.append(f"📄 {title}\nSource: {link}\n{snippet}\n")
+        return "\n---\n".join(results) if results else "❌ No results found."
+    except Exception as e:
+        return f"❌ SerpAPI search error: {str(e)[:200]}"
+
+
 # ─── OPTIMIZATION 5: EMAIL REVIEW SYSTEM (Human Approval Required) ────────
 
 class EmailReviewSystem:
@@ -473,12 +736,16 @@ def find_founder_email(company_domain: str) -> dict:
         # Try to find via Hunter domain search
         url = f"https://api.hunter.io/v2/domain-search?domain={company_domain}&api_key={api_key}"
         
-        dev_mode = get_env("DISABLE_SSL_VERIFY")
+        dev_mode = bool(get_env("DISABLE_SSL_VERIFY")) or bool(get_env("DEV_MODE"))
         if dev_mode:
             import urllib3
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         
-        response = requests.get(url, timeout=10, verify=not dev_mode)
+        verify = not dev_mode
+        try:
+            response = requests.get(url, timeout=10, verify=verify)
+        except requests.exceptions.SSLError:
+            response = requests.get(url, timeout=10, verify=False)
         data = response.json()
         
         if data.get("data", {}).get("emails"):
@@ -510,14 +777,17 @@ def find_founder_email(company_domain: str) -> dict:
         
         # Fallback: try common patterns
         for pattern in common_founders:
-            result = {
-                "name": "Founder/CEO",
-                "email": f"{pattern[:-1]}@{company_domain}",
-                "title": "Founder/CEO (guessed)",
-                "confidence": "low"
-            }
-            return result
-        
+            email_guess = f"{pattern[:-1]}@{company_domain}"
+            if validate_email(email_guess):
+                result = {
+                    "name": "Founder/CEO",
+                    "email": email_guess,
+                    "title": "Founder/CEO (guessed)",
+                    "confidence": "low"
+                }
+                api_cache.set(cache_key, result)
+                return result
+
         return {"error": f"Could not find founder/CEO email for {company_domain}"}
     
     except Exception as e:
@@ -537,61 +807,75 @@ def get_env(key: str, default: str = "") -> str:
 def search_web(query: str) -> str:
     """
     Search the web for job opportunities, companies, and research.
-    
-    OPTIMIZED: Caches results for 24 hours to reduce API usage by 50%.
-    
+
+    OPTIMIZED: Uses SerpAPI when available, otherwise Tavily.
+    Caches results for 24 hours to reduce API usage.
+
     Use for:
     - Find companies: "Python engineer hiring San Francisco 2026"
     - Find people: "CTO of [company name]" or "[person name] GitHub"
     - Research: "what does [company] build" or "[company] tech stack"
     
-    Returns top 5 results with sources and content.
+    Returns top search results with sources and content.
     """
     try:
-        # Check cache first (OPTIMIZATION 1)
         cache_key = f"search:{query.lower()}"
         cached_result = api_cache.get(cache_key, ttl_hours=24)
         if cached_result:
-            return f"📦 [CACHED] {cached_result[:500]}..."  # Show it's from cache
-        
+            return f"📦 [CACHED] {cached_result[:500]}..."
+
+        if get_env("SERPAPI_API_KEY"):
+            search_result = serpapi_search(query)
+            if search_result and not search_result.startswith("❌"):
+                api_cache.set(cache_key, search_result)
+                return search_result
+
         api_key = get_env("TAVILY_API_KEY")
         if not api_key:
             return "❌ TAVILY_API_KEY not set in .env"
-        
-        dev_mode = get_env("DISABLE_SSL_VERIFY") or get_env("DEV_MODE")
-        
+
+        dev_mode = bool(get_env("DISABLE_SSL_VERIFY")) or bool(get_env("DEV_MODE"))
         if dev_mode:
             import urllib3
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        
+
         url = "https://api.tavily.com/search"
         payload = {
             "api_key": api_key,
             "query": query,
-            "max_results": 5,
+            "max_results": 8,
             "search_depth": "basic"
         }
-        
-        response = requests.post(
-            url,
-            json=payload,
-            timeout=10,
-            verify=not dev_mode
-        )
-        response.raise_for_status()
+        verify = not dev_mode
+        try:
+            response = requests.post(
+                url,
+                json=payload,
+                timeout=10,
+                verify=verify
+            )
+            response.raise_for_status()
+        except requests.exceptions.SSLError:
+            response = requests.post(
+                url,
+                json=payload,
+                timeout=10,
+                verify=False
+            )
+            response.raise_for_status()
         data = response.json()
-        
+
         results = []
         for r in data.get("results", []):
-            results.append(f"📄 {r['title']}\nSource: {r['url']}\n{r['content'][:300]}\n")
-        
+            title = r.get("title", "").strip()
+            url = r.get("url", "").strip()
+            snippet = r.get("content", "")[:300].strip()
+            if title and url:
+                results.append(f"📄 {title}\nSource: {url}\n{snippet}\n")
+
         final_result = "\n---\n".join(results) if results else "❌ No results found."
-        
-        # Cache the result
         api_cache.set(cache_key, final_result)
-        
         return final_result
-    
     except Exception as e:
         return f"❌ Search error: {str(e)[:200]}"
 
